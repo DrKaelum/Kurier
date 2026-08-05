@@ -1,0 +1,26 @@
+{
+  "name": "kurier",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev": "npm run dev --workspace @kurier/web",
+    "format": "prettier --write . && npm run format:go",
+    "format:check": "prettier --check . && npm run format:check:go",
+    "format:go": "gofmt -w services",
+    "format:check:go": "test -z \"$(gofmt -l services)\"",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "verify": "npm run format:check && npm run lint && npm run test && npm run build && npm run verify:go",
+    "verify:go": "for service in services/api services/worker services/local-agent; do (cd \"$service\" && go test ./... && go vet ./...); done"
+  },
+  "devDependencies": {
+    "prettier": "^3.6.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

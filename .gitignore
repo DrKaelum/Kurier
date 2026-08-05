@@ -1,0 +1,22 @@
+# Environment and local overrides
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Go
+bin/
+*.test
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+
+# Local tooling
+.sst/
