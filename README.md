@@ -13,7 +13,7 @@ implementation.
 - `services/api` — Go HTTP API
 - `services/worker` — Go request-execution worker process
 - `services/local-agent` — Go local execution agent and future MCP server
-- `infra` — notes for the pending SST viability spike
+- `infra` — isolated infrastructure spikes and future infrastructure
 - `docs` — architecture, decisions, spikes, and planning
 - `scripts` — future repository-level development scripts
 
@@ -56,6 +56,26 @@ docker compose config --quiet
 
 `npm run verify` runs all formatting checks, linting, tests, builds, Go tests,
 and Go vet checks in one command.
+
+## SST viability configuration
+
+The repository contains an isolated, non-production SST configuration for the
+completed viability experiment. It accepts only the temporary `viability`
+stage:
+
+```sh
+npm run sst:install
+npm run sst:diff
+npm run sst:deploy
+npm run sst:state:list
+npm run sst:remove
+```
+
+These commands can create AWS resources and charges. Review
+[`docs/spikes/sst-viability.md`](docs/spikes/sst-viability.md), authenticate
+with a least-privilege short-lived AWS identity, inspect `npm run sst:diff`,
+and obtain approval before deployment. SST is not yet Kurier's adopted
+infrastructure framework.
 
 The PostgreSQL credentials in `.env.example` and `compose.yml` are explicitly
 for local development only. Never store real credentials in the repository.

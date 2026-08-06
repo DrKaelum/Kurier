@@ -10,15 +10,21 @@
     "dev": "npm run dev --workspace @kurier/web",
     "format": "prettier --write . && npm run format:go",
     "format:check": "prettier --check . && npm run format:check:go",
-    "format:go": "gofmt -w services",
-    "format:check:go": "test -z \"$(gofmt -l services)\"",
+    "format:go": "gofmt -w services infra/spikes/sst-viability/service",
+    "format:check:go": "test -z \"$(gofmt -l services infra/spikes/sst-viability/service)\"",
     "lint": "npm run lint --workspaces --if-present",
+    "sst:deploy": "sst deploy --stage viability",
+    "sst:diff": "sst diff --stage viability",
+    "sst:install": "sst install --stage viability",
+    "sst:remove": "sst remove --stage viability",
+    "sst:state:list": "sst state list --stage viability",
     "test": "npm run test --workspaces --if-present",
     "verify": "npm run format:check && npm run lint && npm run test && npm run build && npm run verify:go",
-    "verify:go": "for service in services/api services/worker services/local-agent; do (cd \"$service\" && go test ./... && go vet ./...); done"
+    "verify:go": "for service in services/api services/worker services/local-agent infra/spikes/sst-viability/service; do (cd \"$service\" && go test ./... && go vet ./...); done"
   },
   "devDependencies": {
-    "prettier": "^3.6.2"
+    "prettier": "^3.6.2",
+    "sst": "4.17.1"
   },
   "engines": {
     "node": ">=22"

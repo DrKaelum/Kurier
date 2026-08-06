@@ -20,3 +20,6 @@ bin/
 
 # Local tooling
 .sst/
+infra/spikes/sst-viability/.sst/
+*.sst-state.json
+*.sst-diff.json

@@ -7,5 +7,6 @@ describe("App", () => {
     render(<App />);
 
     expect(screen.getByRole("heading", { name: "Kurier" })).toBeInTheDocument();
+    expect(screen.getByText("Environment: local")).toBeInTheDocument();
   });
 });

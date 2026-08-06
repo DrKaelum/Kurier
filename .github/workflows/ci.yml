@@ -33,6 +33,7 @@ jobs:
           - services/api
           - services/worker
           - services/local-agent
+          - infra/spikes/sst-viability/service
     defaults:
       run:
         working-directory: ${{ matrix.service }}
