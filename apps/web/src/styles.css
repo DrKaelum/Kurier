@@ -47,3 +47,8 @@ p {
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
+
+.stage {
+  color: #507166;
+  font-size: 0.875rem;
+}

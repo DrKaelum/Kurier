@@ -17,8 +17,9 @@ security review, or vertical-slice delivery provide better evidence.
 
 The proposed production topology uses CloudFront for web delivery, ECS Fargate
 for the API and worker, RDS PostgreSQL for persistence, SQS for execution jobs,
-and S3 for larger immutable evidence artifacts. GitHub Actions is the proposed
-CI/CD entry point.
+and S3 for larger immutable evidence artifacts. SST 4 with TypeScript is the
+selected infrastructure framework following the compute/frontend and database
+viability spikes. GitHub Actions is the proposed CI/CD entry point.
 
 ## Trust and data boundaries
 
@@ -33,6 +34,9 @@ needed by the hosted platform.
 
 ## Current state
 
-Only local process foundations exist today. PostgreSQL is available through
-Docker Compose, but services are not connected to it. Queueing, evidence
-storage, authentication, redaction, and AWS infrastructure remain future work.
+Only local process foundations and isolated, removable infrastructure-spike
+definitions exist today; no Kurier AWS stage remains deployed. PostgreSQL is
+available through Docker Compose, while an isolated Fargate spike proved
+private RDS PostgreSQL connectivity, secure credential delivery, TLS, and a
+versioned migration. Product services are not connected to PostgreSQL yet.
+Queueing, evidence storage, authentication, and redaction remain future work.

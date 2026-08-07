@@ -12,6 +12,7 @@ coverage/
 # Go
 bin/
 *.test
+**/.build/
 
 # Editors and operating systems
 .idea/
@@ -20,3 +21,6 @@ bin/
 
 # Local tooling
 .sst/
+infra/spikes/sst-viability/.sst/
+*.sst-state.json
+*.sst-diff.json

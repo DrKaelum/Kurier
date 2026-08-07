@@ -1,0 +1,13 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DavianAdminOnly",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::__ACCOUNT_ID__:user/davian-admin"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
