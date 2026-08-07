@@ -2,18 +2,17 @@
 
 ## Status and recommendation
 
-Executed on 2026-08-06. SST passed the non-database viability tests: it
-deployed a VPC, ECS/Fargate Go service, least-privilege SQS integration, and
-React/Vite static site; repeated the deployment cleanly; detected a deliberate
-configuration change; exposed recoverable state; and removed the application
-resources.
+Executed on 2026-08-06. SST passed both the original non-database viability
+tests and the database/least-privilege follow-up. The combined tests deployed
+and observed the planned compute, queue, frontend, private PostgreSQL,
+resource-linking, migration, state, repeat-deployment, change-detection, and
+teardown paths.
 
-The recommendation is to run one additional database-specific spike before
-permanently adopting SST for Kurier. The evidence supports SST for the tested
-compute, queue, IAM, frontend, stage, and teardown workflow. PostgreSQL
-networking, migrations, recovery, and production cost were deliberately not
-deployed or proven here. The related architecture decision therefore remains
-proposed.
+The recommendation is to adopt SST 4 as Kurier's infrastructure framework.
+This is evidence for the framework, not approval to promote the spike topology
+unchanged into production. Production database recovery, credential rotation,
+high availability, and network-egress design remain separate engineering work.
+ADR 0001 is accepted based on the combined evidence.
 
 ## Purpose
 
@@ -42,6 +41,7 @@ The acceptance criteria were:
 - AWS SDK for Go v2 core: `1.43.4`
 - AWS SDK for Go v2 SQS: `1.46.4`
 - Stage: `viability`
+- Database stage: `db-viability`
 - Region: `us-east-2`
 - Node.js: `26.4.0`
 - Go: `1.26.5`
@@ -288,7 +288,7 @@ invalid link configuration by logging a configuration error and returning HTTP
 503 from `/queue-test`, rather than crashing or attempting a hardcoded
 fallback.
 
-## PostgreSQL assessment
+## Pre-deployment PostgreSQL assessment
 
 No database was deployed.
 
@@ -332,10 +332,293 @@ and a strategy for local-to-hosted data parity. Database credentials are
 present in SST state/resource links and require tighter state and runtime-access
 review than the harmless queue link tested here.
 
-A separate database spike is necessary. It should compare standard RDS and
-Aurora Serverless v2 with representative connections from ECS, test migrations
-and rollback, inspect backups/restores and secret rotation, and measure idle and
-steady-state cost. It must use a non-root deployment role.
+A separate database spike was necessary. The follow-up below completed the
+connectivity, migration, IAM, repeat-deployment, and teardown portions. Restore
+testing and secret rotation remain production-readiness work.
+
+## Database and least-privilege follow-up
+
+### Purpose and identity
+
+The follow-up tested whether SST could manage Kurier's likely PostgreSQL path
+without root credentials or `AdministratorAccess`. Both the unprofiled AWS CLI
+and the `kurier-admin` profile resolved to the non-root IAM user
+`arn:aws:iam::747336059622:user/davian-admin`. That user created and assumed
+`kurier-db-viability-deployer`; every SST diff, deployment, inspection, repeat
+deployment, and removal ran as:
+
+```text
+arn:aws:sts::747336059622:assumed-role/kurier-db-viability-deployer/kurier-db-viability
+```
+
+The role session used temporary process environment credentials. No credential
+file, permanent access key, password, MFA value, or root credential was read,
+written, or used.
+
+### Database comparison and selection
+
+Verified from the current [SST Postgres component
+documentation](https://sst.dev/docs/component/aws/postgres), `sst.aws.Postgres`
+creates standard RDS PostgreSQL. Its documented baseline is a Single-AZ
+`db.t4g.micro` at about `$0.016/hour` plus 20 GB gp3 at about
+`$0.115/GB-month`, or roughly `$14/month` before backup and transfer costs.
+It requires VPC subnets, can link connection properties to runtimes, and
+supports a local `dev` override that avoids deploying RDS.
+
+Verified from the current [SST Aurora component
+documentation](https://sst.dev/docs/component/aws/aurora),
+`sst.aws.Aurora` creates Aurora Serverless v2. SST documents a default zero-to-
+four-ACU range, pause after five idle minutes, roughly 15-second resume latency,
+`$0.12/ACU-hour`, and `$0.01/GB-month` storage. Aurora can expose a Data API and
+Secrets Manager secret ARN. It is attractive for intermittent development but
+adds Aurora-specific scaling, pause, connection, and pricing behavior.
+
+Both candidates use private VPC networking and support encrypted storage,
+backups, and point-in-time recovery. Neither requires a NAT Gateway for
+database traffic itself. Application tasks still need a route to ECR,
+CloudWatch Logs, Secrets Manager, and other required AWS APIs. Neither SST
+component supplies Kurier's schema migration workflow.
+
+Standard RDS PostgreSQL was selected because it matches Kurier's proposed
+architecture, is sufficient for the capstone vertical slice, is simpler to
+reason about, and has a lower predictable continuously-running baseline than
+an unpaused Aurora database. Aurora remains a future commercial option if
+measured scale, availability, or intermittent-stage economics justify its
+additional behavior.
+
+AWS documents that RDS billing is per second with a ten-minute minimum after a
+billable state change, and that new-account free-tier or credits may apply.
+Eligibility was not inferred from the account and no billing claim is made.
+See [AWS RDS for PostgreSQL pricing](https://aws.amazon.com/rds/postgresql/pricing/).
+
+### Exact deployed configuration
+
+- Application: `kurier-sst-db-spike`
+- Stage: `db-viability`
+- Region: `us-east-2`
+- SST: `4.17.1`
+- Pulumi AWS provider: `7.40.0`
+- PostgreSQL engine: `17.10`
+- Instance: Single-AZ `db.t4g.micro`
+- Storage: 20 GB gp3, encrypted, with storage autoscaling disabled
+- Database name: `kurier_db_viability`
+- Public access: disabled
+- Database subnets: two private subnets with only the VPC-local route
+- Backup retention: one day
+- Final snapshot: skipped for the disposable stage
+- Automated backups on deletion: not retained
+- Deletion protection and Performance Insights: disabled
+- RDS Proxy: disabled
+- `rds.force_ssl`: `1`
+
+The spike used a raw Pulumi VPC graph inside the SST configuration: one VPC,
+two public task/ALB subnets, two private database subnets, one Internet Gateway,
+public and private route tables, and dedicated ALB, task, and database security
+groups. It created no NAT Gateway, VPC endpoint, Route 53 resource, custom
+domain, Aurora resource, public database address, or second database.
+
+The temporary ARM64 Fargate Spot task used 0.25 vCPU and 0.5 GB memory. It was
+assigned a public IPv4 address only because the approved no-NAT/no-interface-
+endpoint topology still needed ECR, Secrets Manager, CloudWatch Logs, and AWS
+API access. Its public subnets had an active
+`0.0.0.0/0 -> Internet Gateway` route. Task ingress allowed TCP 8080 only from
+the ALB security group. Task egress allowed:
+
+- TCP 443 to the internet for required AWS HTTPS endpoints and image pulls;
+- TCP and UDP 53 to the VPC resolver at `10.0.0.2/32`;
+- TCP 5432 to the VPC CIDR for the private database;
+- TCP 80 to `169.254.170.2/32` for the ECS task credential endpoint.
+
+The database security group accepted TCP 5432 only from the task security
+group and had no egress rule. AWS inspection confirmed the database was not
+publicly accessible and its private subnet route table had no Internet Gateway
+or NAT route.
+
+### Secure linking and Go behavior
+
+The isolated service lives under
+`infra/spikes/sst-db-viability/service`. SST's generated database secret stayed
+in Secrets Manager. A custom `DatabaseAccess` link exposed only database name,
+host, port, username, and the generated secret ARN. The linked environment did
+not contain the password. The task role had one inline statement:
+`secretsmanager:GetSecretValue` on the exact generated secret ARN. The ECS
+execution role had only AWS's standard `AmazonECSTaskExecutionRolePolicy`.
+
+The service fetched and decoded the secret at runtime, built a PostgreSQL
+connection without printing it, required TLS 1.2 or newer with
+`sslmode=verify-full`, and validated the RDS hostname against AWS's official CA
+bundle. Missing links, missing secrets, malformed values, transport failures,
+and database failures produce fixed diagnostic categories or redacted HTTP
+responses. Credentials, connection strings, ARNs, AWS tokens, and internal
+errors are not logged or returned.
+
+The service exposed:
+
+- `GET /service-health` for process/ALB health;
+- `GET /health` with distinct service and database status;
+- `GET /migration-status`;
+- `POST /migrate`;
+- `POST /database-test`.
+
+Migration `0001_create_spike_records.sql` created a spike-only table and a
+version-tracking table. The migration ran transactionally at startup.
+`POST /migrate` twice returned `{"status":"current"}`, proving idempotency.
+`POST /database-test` generated harmless correlation metadata, inserted it,
+retrieved it, compared it, and deleted it in one observed operation.
+
+Observed runtime results:
+
+```text
+GET  /service-health   200, service ok
+GET  /health           200, service ok and database ok
+GET  /migration-status 200, currentVersion 1
+POST /migrate          200, current
+POST /migrate          200, current
+POST /database-test    200, inserted-retrieved-deleted
+```
+
+### Deployment-role design
+
+The committed policy template is
+`infra/spikes/sst-db-viability/iam/deployment-policy.json`; account IDs remain
+placeholders. Its trust policy permits assumption only by the non-root
+`davian-admin` user. The deployment policy does not include
+`AdministratorAccess`, unrestricted IAM administration, user/group/access-key
+management, or permission to pass arbitrary roles.
+
+Write permissions are limited where AWS and generated names permit:
+
+- exact shared SST state and asset buckets and their objects;
+- `/sst/bootstrap` and the exact app/stage passphrase parameter;
+- the shared `sst-asset` ECR repository;
+- stage-prefixed RDS, Secrets Manager, ECS, log-group, and IAM role ARNs;
+- `iam:PassRole` only for stage-prefixed roles and only to
+  `ecs-tasks.amazonaws.com`;
+- the RDS service-linked role only through `iam:CreateServiceLinkedRole` with
+  `iam:AWSServiceName = rds.amazonaws.com`.
+
+Some read and relationship APIs necessarily remained `Resource: "*"`,
+including `Describe*`, `GetAuthorizationToken`, random-password generation,
+ECS task-definition registration, EC2 relationship/tag operations,
+load-balancer graph operations, and Application Auto Scaling graph operations.
+Their service APIs either do not support useful creation-time resource scoping
+or the final ARN does not exist when SST calls them. The stage guard, SST
+default tags, tightly named dependent resources, lack of unrelated delete APIs,
+and short role lifetime reduce but do not eliminate this risk. A production
+role should add organization-level tag conditions or separate bootstrap and
+application roles where AWS reliably supports them.
+
+The policy was validated with IAM Access Analyzer before use. Access-denied
+events drove only evidence-backed additions or scope corrections:
+
+- exact generated role prefixes and RDS parameter/subnet-group ARNs;
+- Secrets Manager `GetResourcePolicy`;
+- Application Auto Scaling create/delete/tag actions and
+  `ListTagsForResource`;
+- stage-log-group `logs:FilterLogEvents` for redacted diagnosis;
+- EC2 child-resource creation in the spike VPC;
+- `iam:ListInstanceProfilesForRole` on only the stage-generated role prefixes,
+  required by Pulumi's IAM role deleter.
+
+The final IAM policy simulation allowed
+`ListInstanceProfilesForRole` on the exact generated task role. A deliberate
+account-wide `iam:ListRoles` call under the deployment role was denied, which
+confirmed it could not enumerate or administer unrelated IAM roles.
+
+SST's default ECS task role includes Session Manager channel actions when ECS
+Exec is enabled. Kurier did not require interactive container access for this
+spike. The service explicitly set `enableExecuteCommand = false`, removed the
+default task-role statements, and added only exact-secret read access.
+
+### Commands and verification
+
+The controlled workflow used:
+
+```sh
+aws sts get-caller-identity
+aws accessanalyzer validate-policy ...
+aws sts assume-role ...
+npm run sst:install:db
+BUILDX_BUILDER=kurier-sst-builder npm run sst:diff:db -- --print-logs
+BUILDX_BUILDER=kurier-sst-builder npm run sst:deploy:db -- --print-logs
+curl --fail-with-body <service-url>/health
+curl --fail-with-body --request POST <service-url>/migrate
+curl --fail-with-body --request POST <service-url>/database-test
+npm run sst:state:list:db
+npm run sst:remove:db -- --print-logs
+```
+
+Installation/configuration evaluation and preview passed under the assumed
+role. The deployment completed successfully. An unchanged second deployment
+reported all 44 managed cloud resources skipped. A temporary one-week to
+two-week log-retention edit produced exactly one
+`retentionInDays = 14` diff; the edit was restored and a final diff reported no
+changes.
+
+SST state used the pre-existing, versioned `sst-state-moshrdrrbeba` S3 bucket,
+with local generated state under ignored `.sst/`. `sst state list` showed only
+`db-viability` for this application before removal and `db-viability (not
+deployed)` afterward. The shared state bucket, asset bucket, `sst-asset` ECR
+repository, and `/sst/bootstrap` parameter were preserved.
+
+### Problems and resolutions
+
+- SST's high-level VPC component brought Cloud Map/private-DNS behavior that
+  was unnecessary for this database-only test. A small raw Pulumi VPC graph
+  kept the test explicit and avoided Route 53 and NAT.
+- With no NAT or VPC endpoints, private-subnet Fargate could not reach ECR and
+  required AWS APIs. After explicit approval, only the disposable task moved
+  to public subnets with `assignPublicIp: true`; RDS remained private.
+- Local BuildKit DNS failed while fetching build dependencies. A temporary
+  host-network Buildx builder isolated the workaround without changing the
+  default builder.
+- The scratch container initially contained the RDS CA bundle but no general
+  web PKI roots, causing a redacted `secret-fetch-transport` failure against
+  Secrets Manager. Adding the maintained Mozilla CA bundle fixed the HTTPS
+  path while retaining the separate RDS CA bundle.
+- The first removal attempt exposed the missing
+  `iam:ListInstanceProfilesForRole` permission after AWS's normal ECS drain
+  delay. That single action was added to the existing stage-role ARN scope,
+  validated, and the same assumed role completed teardown.
+
+### Teardown and residual audit
+
+SST removal reported zero managed resources. Independent AWS queries found no
+spike RDS instance or cluster, secret, ECS cluster or task, load balancer,
+tagged VPC, subnet, security group, ENI, Internet Gateway, NAT Gateway, or
+CloudWatch log group. The task and its public IPv4 association disappeared
+with ECS deletion.
+
+One already-created automated RDS backup snapshot remained temporarily visible
+immediately after instance deletion even though
+`deleteAutomatedBackups = true`; the retained-automated-backup API returned
+`DBInstanceAutomatedBackupNotFound`. AWS documents that automated backups are
+deleted when they are not retained. This was not a manual or final snapshot
+and cannot be deleted through the manual snapshot API. A later recheck returned
+an empty snapshot inventory, confirming the eventual cleanup completed.
+
+The shared SST bootstrap buckets, ECR repository, SSM bootstrap parameter, and
+their uncertain shared objects were deliberately not removed. The account-level
+`AWSServiceRoleForRDS` service-linked role was also preserved. After cloud
+audit, the temporary `kurier-db-viability-deployer` role and its inline policy
+were deleted using the non-root administrator identity.
+
+### Cost and limitations
+
+The standard RDS baseline is approximately `$0.016/hour` plus prorated 20 GB
+gp3 storage (`$2.30/month` at SST's documented us-east-1 estimate). The public
+ALB, 0.25-vCPU/0.5-GB Fargate Spot task, public IPv4, logs, secrets, ECR, and S3
+added short-lived usage. The experiment ran for hours, not a month; expected
+direct cost is low single-digit dollars or less, but billing data was not yet
+available and account credits were not assumed.
+
+For a capstone vertical slice, Single-AZ RDS is economical and operationally
+simple. A commercial deployment needs an explicit Multi-AZ and recovery
+decision, longer retention, restore testing, credential rotation, application
+users rather than the master user, connection-pool sizing, migration
+serialization, and monitoring. The temporary public-IP task design is not a
+production recommendation; production should compare NAT, VPC endpoints,
+public tasks behind an ALB, and their cost/security tradeoffs.
 
 ## Developer and security observations
 
@@ -348,22 +631,35 @@ Positive observations:
 - stage prefixes and the explicit stage guard prevented accidental extra
   environments;
 - diffs were readable and repeat deployment was fast;
-- teardown handled the application graph successfully.
+- teardown handled both application graphs successfully;
+- private RDS, secure secret delivery, Go migrations, and least-privilege role
+  operation were observable through standard AWS tooling.
 
 Risks and limitations:
 
 - first preview bootstrap is mutating and not obvious from `sst diff` output;
 - `sst remove` does not remove bootstrap resources or state by default;
 - local console-login authentication required a workaround;
-- the available root identity was overprivileged;
-- ECS services include Session Manager permissions by default;
-- CloudFront and ECS teardown each took several minutes;
+- the first phase used a root identity; the follow-up corrected this and proved
+  a non-root assumed deployment role;
+- ECS services can include Session Manager permissions by default, so Kurier
+  must keep ECS Exec opt-in;
+- CloudFront, ECS, and RDS teardown each took several minutes;
 - static-site rebuilds appear as transient command changes even when deployed
   assets are unchanged;
-- PostgreSQL and CI role behavior remain untested.
+- the tested deployment policy still needs production hardening around AWS APIs
+  that require wildcard resources;
+- database restore, rotation, Multi-AZ behavior, and production CI federation
+  remain untested.
 
 ## Decision
 
-The tested SST path is technically viable, but adoption remains proposed.
-Complete the database-specific and least-privilege CI/deployment-role spike
-before replacing AWS CDK in Kurier's architecture baseline.
+Adopt SST 4 as Kurier's infrastructure framework. The combined evidence covers
+the required compute, queue, static frontend, private PostgreSQL, secure
+linking, non-root deployment role, repeat deployment, diff, state, and teardown
+paths. ADR 0001 records the accepted choice.
+
+The next infrastructure task should convert the experimental graph into a
+small, environment-oriented foundation and design GitHub Actions OIDC
+federation. It must not copy the spike's public-IP task, master-database-user,
+or broad creation-time permissions into production without explicit review.

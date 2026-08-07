@@ -1,0 +1,416 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "IdentityAndReadOnlyDiscovery",
+      "Effect": "Allow",
+      "Action": [
+        "sts:GetCallerIdentity",
+        "ec2:Describe*",
+        "ecs:Describe*",
+        "ecs:List*",
+        "elasticloadbalancing:Describe*",
+        "application-autoscaling:Describe*",
+        "rds:Describe*",
+        "rds:ListTagsForResource",
+        "secretsmanager:ListSecrets",
+        "logs:DescribeLogGroups",
+        "logs:ListTagsForResource",
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListRolePolicies",
+        "iam:ListAttachedRolePolicies",
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion",
+        "iam:ListPolicyVersions",
+        "ssm:DescribeParameters"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "SstStateBuckets",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetBucketLocation",
+        "s3:GetBucketVersioning",
+        "s3:ListBucket",
+        "s3:ListBucketMultipartUploads"
+      ],
+      "Resource": [
+        "arn:aws:s3:::sst-state-moshrdrrbeba",
+        "arn:aws:s3:::sst-asset-moshrdrrbeba"
+      ]
+    },
+    {
+      "Sid": "SstStateObjects",
+      "Effect": "Allow",
+      "Action": [
+        "s3:AbortMultipartUpload",
+        "s3:DeleteObject",
+        "s3:DeleteObjectTagging",
+        "s3:DeleteObjectVersion",
+        "s3:GetObject",
+        "s3:GetObjectTagging",
+        "s3:GetObjectVersion",
+        "s3:ListMultipartUploadParts",
+        "s3:PutObject",
+        "s3:PutObjectTagging"
+      ],
+      "Resource": [
+        "arn:aws:s3:::sst-state-moshrdrrbeba/*",
+        "arn:aws:s3:::sst-asset-moshrdrrbeba/*"
+      ]
+    },
+    {
+      "Sid": "SstParameters",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter",
+        "ssm:GetParameterHistory",
+        "ssm:GetParameters",
+        "ssm:PutParameter",
+        "ssm:DeleteParameter",
+        "ssm:AddTagsToResource",
+        "ssm:RemoveTagsFromResource",
+        "ssm:ListTagsForResource"
+      ],
+      "Resource": [
+        "arn:aws:ssm:us-east-2:__ACCOUNT_ID__:parameter/sst/bootstrap",
+        "arn:aws:ssm:us-east-2:__ACCOUNT_ID__:parameter/sst/passphrase/kurier-sst-db-spike/db-viability"
+      ]
+    },
+    {
+      "Sid": "EcrAuthorization",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "SstAssetRepository",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:BatchGetImage",
+        "ecr:CompleteLayerUpload",
+        "ecr:DescribeImages",
+        "ecr:DescribeRepositories",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:GetLifecyclePolicy",
+        "ecr:GetRepositoryPolicy",
+        "ecr:InitiateLayerUpload",
+        "ecr:ListImages",
+        "ecr:PutImage",
+        "ecr:UploadLayerPart"
+      ],
+      "Resource": "arn:aws:ecr:us-east-2:__ACCOUNT_ID__:repository/sst-asset"
+    },
+    {
+      "Sid": "CreateTaggedNetworkResources",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:CreateVpc",
+        "ec2:CreateSubnet",
+        "ec2:CreateRouteTable",
+        "ec2:CreateInternetGateway",
+        "ec2:CreateSecurityGroup"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/sst:app": "kurier-sst-db-spike",
+          "aws:RequestTag/sst:stage": "db-viability",
+          "aws:RequestedRegion": "us-east-2"
+        }
+      }
+    },
+    {
+      "Sid": "ManageTaggedNetworkResources",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DeleteVpc",
+        "ec2:DeleteSubnet",
+        "ec2:DeleteRouteTable",
+        "ec2:DeleteInternetGateway",
+        "ec2:DeleteSecurityGroup",
+        "ec2:ModifyVpcAttribute",
+        "ec2:ModifySubnetAttribute"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/sst:app": "kurier-sst-db-spike",
+          "aws:ResourceTag/sst:stage": "db-viability",
+          "aws:RequestedRegion": "us-east-2"
+        }
+      }
+    },
+    {
+      "Sid": "CreateResourcesInSpikeVpc",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:CreateRouteTable",
+        "ec2:CreateSecurityGroup",
+        "ec2:CreateSubnet"
+      ],
+      "Resource": "arn:aws:ec2:us-east-2:__ACCOUNT_ID__:vpc/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/sst:app": "kurier-sst-db-spike",
+          "aws:ResourceTag/sst:stage": "db-viability",
+          "aws:RequestedRegion": "us-east-2"
+        }
+      }
+    },
+    {
+      "Sid": "NetworkRelationshipsWithoutResourceScoping",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:AttachInternetGateway",
+        "ec2:DetachInternetGateway",
+        "ec2:AssociateRouteTable",
+        "ec2:DisassociateRouteTable",
+        "ec2:CreateRoute",
+        "ec2:DeleteRoute",
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:AuthorizeSecurityGroupEgress",
+        "ec2:RevokeSecurityGroupIngress",
+        "ec2:RevokeSecurityGroupEgress",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-2"
+        }
+      }
+    },
+    {
+      "Sid": "ManageSpikeRoles",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:TagRole",
+        "iam:UntagRole",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:ListInstanceProfilesForRole"
+      ],
+      "Resource": [
+        "arn:aws:iam::__ACCOUNT_ID__:role/kuri-db-viability-*",
+        "arn:aws:iam::__ACCOUNT_ID__:role/kurier-ss-db-viability-*",
+        "arn:aws:iam::__ACCOUNT_ID__:role/kurier-sst-db-spike-db-viability-*"
+      ]
+    },
+    {
+      "Sid": "PassSpikeRolesToEcs",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": [
+        "arn:aws:iam::__ACCOUNT_ID__:role/kuri-db-viability-*",
+        "arn:aws:iam::__ACCOUNT_ID__:role/kurier-ss-db-viability-*",
+        "arn:aws:iam::__ACCOUNT_ID__:role/kurier-sst-db-spike-db-viability-*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "ecs-tasks.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "ReadEcsExecutionPolicy",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion",
+        "iam:ListPolicyVersions"
+      ],
+      "Resource": "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+    },
+    {
+      "Sid": "CreateRdsServiceLinkedRole",
+      "Effect": "Allow",
+      "Action": "iam:CreateServiceLinkedRole",
+      "Resource": "arn:aws:iam::__ACCOUNT_ID__:role/aws-service-role/rds.amazonaws.com/AWSServiceRoleForRDS",
+      "Condition": {
+        "StringEquals": {
+          "iam:AWSServiceName": "rds.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "CreateRdsResources",
+      "Effect": "Allow",
+      "Action": [
+        "rds:CreateDBParameterGroup",
+        "rds:CreateDBSubnetGroup",
+        "rds:AddTagsToResource"
+      ],
+      "Resource": [
+        "arn:aws:rds:us-east-2:__ACCOUNT_ID__:db:kurier-sst-db-spike-db-viability-*",
+        "arn:aws:rds:us-east-2:__ACCOUNT_ID__:pg:kurier-sst-db-spike-db-viability-*",
+        "arn:aws:rds:us-east-2:__ACCOUNT_ID__:subgrp:kurier-sst-db-spike-db-viability-*"
+      ]
+    },
+    {
+      "Sid": "ConstrainRdsInstanceCreation",
+      "Effect": "Allow",
+      "Action": "rds:CreateDBInstance",
+      "Resource": "arn:aws:rds:us-east-2:__ACCOUNT_ID__:db:kurier-sst-db-spike-db-viability-*",
+      "Condition": {
+        "StringEquals": {
+          "rds:DatabaseClass": "db.t4g.micro",
+          "rds:DatabaseEngine": "postgres"
+        },
+        "Bool": {
+          "rds:MultiAz": "false",
+          "rds:PubliclyAccessible": "false",
+          "rds:StorageEncrypted": "true",
+          "rds:Vpc": "true"
+        },
+        "NumericEquals": {
+          "rds:StorageSize": "20"
+        }
+      }
+    },
+    {
+      "Sid": "UseSpikeRdsConfiguration",
+      "Effect": "Allow",
+      "Action": "rds:CreateDBInstance",
+      "Resource": [
+        "arn:aws:rds:us-east-2:__ACCOUNT_ID__:pg:kurier-sst-db-spike-db-viability-*",
+        "arn:aws:rds:us-east-2:__ACCOUNT_ID__:subgrp:kurier-sst-db-spike-db-viability-*"
+      ]
+    },
+    {
+      "Sid": "ManageRdsResources",
+      "Effect": "Allow",
+      "Action": [
+        "rds:DeleteDBInstance",
+        "rds:DeleteDBParameterGroup",
+        "rds:DeleteDBSubnetGroup",
+        "rds:ModifyDBInstance",
+        "rds:ModifyDBParameterGroup",
+        "rds:ModifyDBSubnetGroup",
+        "rds:RemoveTagsFromResource"
+      ],
+      "Resource": [
+        "arn:aws:rds:us-east-2:__ACCOUNT_ID__:db:kurier-sst-db-spike-db-viability-*",
+        "arn:aws:rds:us-east-2:__ACCOUNT_ID__:pg:kurier-sst-db-spike-db-viability-*",
+        "arn:aws:rds:us-east-2:__ACCOUNT_ID__:subgrp:kurier-sst-db-spike-db-viability-*"
+      ]
+    },
+    {
+      "Sid": "ManageDatabaseSecret",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:CreateSecret",
+        "secretsmanager:DeleteSecret",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetResourcePolicy",
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:PutSecretValue",
+        "secretsmanager:TagResource",
+        "secretsmanager:UntagResource"
+      ],
+      "Resource": "arn:aws:secretsmanager:us-east-2:__ACCOUNT_ID__:secret:kurier-sst-db-spike-db-viability-*"
+    },
+    {
+      "Sid": "GenerateDatabasePassword",
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetRandomPassword",
+      "Resource": "*"
+    },
+    {
+      "Sid": "ManageEcsResources",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:CreateCluster",
+        "ecs:DeleteCluster",
+        "ecs:CreateService",
+        "ecs:DeleteService",
+        "ecs:UpdateService",
+        "ecs:PutClusterCapacityProviders",
+        "ecs:TagResource",
+        "ecs:UntagResource"
+      ],
+      "Resource": [
+        "arn:aws:ecs:us-east-2:__ACCOUNT_ID__:cluster/kurier-sst-db-spike-db-viability-*",
+        "arn:aws:ecs:us-east-2:__ACCOUNT_ID__:service/kurier-sst-db-spike-db-viability-*/*"
+      ]
+    },
+    {
+      "Sid": "ManageEcsTaskDefinitions",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:RegisterTaskDefinition",
+        "ecs:DeregisterTaskDefinition",
+        "ecs:TagResource",
+        "ecs:UntagResource"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ManageLoadBalancing",
+      "Effect": "Allow",
+      "Action": [
+        "elasticloadbalancing:AddTags",
+        "elasticloadbalancing:RemoveTags",
+        "elasticloadbalancing:CreateLoadBalancer",
+        "elasticloadbalancing:DeleteLoadBalancer",
+        "elasticloadbalancing:CreateListener",
+        "elasticloadbalancing:DeleteListener",
+        "elasticloadbalancing:CreateTargetGroup",
+        "elasticloadbalancing:DeleteTargetGroup",
+        "elasticloadbalancing:ModifyLoadBalancerAttributes",
+        "elasticloadbalancing:ModifyTargetGroup",
+        "elasticloadbalancing:ModifyTargetGroupAttributes",
+        "elasticloadbalancing:RegisterTargets",
+        "elasticloadbalancing:DeregisterTargets",
+        "elasticloadbalancing:SetSecurityGroups"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-2"
+        }
+      }
+    },
+    {
+      "Sid": "ManageServiceScaling",
+      "Effect": "Allow",
+      "Action": [
+        "application-autoscaling:RegisterScalableTarget",
+        "application-autoscaling:DeregisterScalableTarget",
+        "application-autoscaling:PutScalingPolicy",
+        "application-autoscaling:DeleteScalingPolicy",
+        "application-autoscaling:TagResource",
+        "application-autoscaling:UntagResource"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ReadSpikeScalingTargetTags",
+      "Effect": "Allow",
+      "Action": "application-autoscaling:ListTagsForResource",
+      "Resource": "arn:aws:application-autoscaling:us-east-2:__ACCOUNT_ID__:scalable-target/*"
+    },
+    {
+      "Sid": "ManageSpikeLogs",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:DeleteLogGroup",
+        "logs:FilterLogEvents",
+        "logs:PutRetentionPolicy",
+        "logs:TagResource",
+        "logs:UntagResource"
+      ],
+      "Resource": "arn:aws:logs:us-east-2:__ACCOUNT_ID__:log-group:/sst/cluster/kurier-sst-db-spike-db-viability-*"
+    }
+  ]
+}

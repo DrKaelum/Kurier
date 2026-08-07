@@ -59,9 +59,10 @@ and Go vet checks in one command.
 
 ## SST viability configuration
 
-The repository contains an isolated, non-production SST configuration for the
-completed viability experiment. It accepts only the temporary `viability`
-stage:
+The repository contains isolated, non-production SST configurations retained
+from the completed compute/frontend and database viability experiments. The
+configuration accepts only the temporary `viability` and `db-viability`
+stages:
 
 ```sh
 npm run sst:install
@@ -71,11 +72,22 @@ npm run sst:state:list
 npm run sst:remove
 ```
 
+The database follow-up uses the corresponding `:db` commands:
+
+```sh
+npm run sst:install:db
+npm run sst:diff:db
+npm run sst:deploy:db
+npm run sst:state:list:db
+npm run sst:remove:db
+```
+
 These commands can create AWS resources and charges. Review
 [`docs/spikes/sst-viability.md`](docs/spikes/sst-viability.md), authenticate
 with a least-privilege short-lived AWS identity, inspect `npm run sst:diff`,
-and obtain approval before deployment. SST is not yet Kurier's adopted
-infrastructure framework.
+and obtain approval before deployment. The completed spikes support SST as
+Kurier's selected infrastructure framework; the retained definitions remain
+experimental and are not a production deployment.
 
 The PostgreSQL credentials in `.env.example` and `compose.yml` are explicitly
 for local development only. Never store real credentials in the repository.

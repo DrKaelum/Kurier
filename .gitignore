@@ -12,6 +12,7 @@ coverage/
 # Go
 bin/
 *.test
+**/.build/
 
 # Editors and operating systems
 .idea/
